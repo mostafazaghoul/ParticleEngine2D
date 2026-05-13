@@ -85,14 +85,22 @@ void Application::render()
     mParticles.draw(mWindow);
 
     if (mHolding) {
-        const float     h   = ParticleSystem::HALF_SIZE;
-        const sf::Color col(255, 230, 150);
-        sf::VertexArray quad(sf::Quads, 4);
-        quad[0].position = {mHeldPos.x - h, mHeldPos.y - h}; quad[0].color = col;
-        quad[1].position = {mHeldPos.x + h, mHeldPos.y - h}; quad[1].color = col;
-        quad[2].position = {mHeldPos.x + h, mHeldPos.y + h}; quad[2].color = col;
-        quad[3].position = {mHeldPos.x - h, mHeldPos.y + h}; quad[3].color = col;
-        mWindow.draw(quad);
+        static constexpr int   SEG = 10;
+        static constexpr float PI  = 3.14159265f;
+        const float             r   = ParticleSystem::HALF_SIZE;
+        const sf::Color         col(255, 230, 150);
+        sf::VertexArray         verts(sf::Triangles, SEG * 3);
+        for (int s = 0; s < SEG; ++s) {
+            float a0 = s       * 2.f * PI / SEG;
+            float a1 = (s + 1) * 2.f * PI / SEG;
+            verts[s*3 + 0].position = mHeldPos;
+            verts[s*3 + 1].position = {mHeldPos.x + std::cos(a0) * r, mHeldPos.y + std::sin(a0) * r};
+            verts[s*3 + 2].position = {mHeldPos.x + std::cos(a1) * r, mHeldPos.y + std::sin(a1) * r};
+            verts[s*3 + 0].color = col;
+            verts[s*3 + 1].color = col;
+            verts[s*3 + 2].color = col;
+        }
+        mWindow.draw(verts);
     }
 
     mWindow.display();
