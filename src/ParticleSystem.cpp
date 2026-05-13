@@ -3,9 +3,10 @@
 
 static constexpr float       GRAVITY       = 600.f;
 static constexpr float       DAMPING       = 0.72f;
+static constexpr float       RESTITUTION   = 0.85f;
 static constexpr std::size_t MAX_PARTICLES = 50'000;
 static constexpr float       PI            = 3.14159265f;
-static constexpr int         SEGMENTS      = 10;
+static constexpr int         SEGMENTS      = 20;
 
 static sf::Color hsvToRgb(float h, float s, float v)
 {
@@ -49,20 +50,56 @@ void ParticleSystem::pushFrom(sf::Vector2f center, float radius)
     }
 }
 
+void ParticleSystem::resolveCollisions()
+{
+    const float diameter = 2.f * HALF_SIZE;
+    const float diamSq   = diameter * diameter;
+
+    for (std::size_t i = 0; i < mParticles.size(); ++i) {
+        for (std::size_t j = i + 1; j < mParticles.size(); ++j) {
+            sf::Vector2f d      = mParticles[j].position - mParticles[i].position;
+            float        distSq = d.x * d.x + d.y * d.y;
+            if (distSq >= diamSq || distSq == 0.f)
+                continue;
+
+            float        dist    = std::sqrt(distSq);
+            sf::Vector2f n       = d / dist;
+            float        overlap = diameter - dist;
+
+            // Push apart equally
+            mParticles[i].position -= n * (overlap * 0.5f);
+            mParticles[j].position += n * (overlap * 0.5f);
+
+            // Impulse along collision normal (equal mass, coefficient of restitution)
+            float relVel = (mParticles[i].velocity.x - mParticles[j].velocity.x) * n.x
+                         + (mParticles[i].velocity.y - mParticles[j].velocity.y) * n.y;
+            if (relVel > 0.f) {
+                float impulse = relVel * (1.f + RESTITUTION) * 0.5f;
+                mParticles[i].velocity -= n * impulse;
+                mParticles[j].velocity += n * impulse;
+            }
+        }
+    }
+}
+
 void ParticleSystem::update(float dt, sf::Vector2u bounds)
 {
+    for (auto& p : mParticles) {
+        p.velocity.y += GRAVITY * dt;
+        p.position   += p.velocity * dt;
+    }
+
+    resolveCollisions();
+
     const float r      = HALF_SIZE;
     const float right  = static_cast<float>(bounds.x) - r;
     const float bottom = static_cast<float>(bounds.y) - r;
 
     for (auto& p : mParticles) {
-        p.velocity.y += GRAVITY * dt;
-        p.position   += p.velocity * dt;
-
-        if (p.position.x < r)     { p.position.x = 2.f * r     - p.position.x; p.velocity.x =  std::abs(p.velocity.x) * DAMPING; }
-        if (p.position.x > right) { p.position.x = 2.f * right - p.position.x; p.velocity.x = -std::abs(p.velocity.x) * DAMPING; }
-        if (p.position.y < r)     { p.position.y = 2.f * r     - p.position.y; p.velocity.y =  std::abs(p.velocity.y) * DAMPING; }
-        if (p.position.y > bottom){ p.position.y = 2.f * bottom- p.position.y; p.velocity.y = -std::abs(p.velocity.y) * DAMPING; }
+        if (p.position.x < r)     { p.position.x = 2.f * r      - p.position.x; p.velocity.x =  std::abs(p.velocity.x) * DAMPING; }
+        if (p.position.x > right) { p.position.x = 2.f * right  - p.position.x; p.velocity.x = -std::abs(p.velocity.x) * DAMPING; }
+        if (p.position.y < r)     { p.position.y = 2.f * r      - p.position.y; p.velocity.y =  std::abs(p.velocity.y) * DAMPING; }
+        if (p.position.y > bottom){ p.position.y = 2.f * bottom - p.position.y; p.velocity.y = -std::abs(p.velocity.y) * DAMPING; }
     }
 }
 

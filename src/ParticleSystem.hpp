@@ -15,6 +15,8 @@ public:
     std::size_t count() const { return mParticles.size(); }
 
 private:
+    void resolveCollisions();
+
     std::vector<Particle> mParticles;
     std::mt19937          mRng{std::random_device{}()};
 };
