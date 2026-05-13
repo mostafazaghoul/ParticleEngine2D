@@ -2,7 +2,7 @@
 
 A real-time particle physics simulation built in C++ with SFML.
 
-The goal is a sandbox where particles interact through basic physical forces — gravity, collisions, and eventually simple fluid-like behavior. Performance is a priority since the interesting stuff only happens at high particle counts.
+The goal is a sandbox where particles interact through basic physical forces like gravity, collisions, and eventually simple fluid-like behavior. Performance is a priority since the interesting stuff only happens at high particle counts.
 
 ## Build
 
@@ -23,4 +23,5 @@ sudo apt-get install libx11-dev libxrandr-dev libxi-dev libudev-dev \
 
 ## Controls
 
+`Left mouse` — hold to spawn particles at cursor  
 `Escape` — close the window
