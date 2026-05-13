@@ -25,24 +25,24 @@ static sf::Color hsvToRgb(float h, float s, float v)
             static_cast<uint8_t>((b + m) * 255.f)};
 }
 
-void ParticleSystem::spawn(sf::Vector2f position, sf::Vector2f velocity)
+void ParticleSystem::spawn(sf::Vector2f position, sf::Vector2f velocity, float radius)
 {
     if (mParticles.size() >= MAX_PARTICLES)
         return;
     std::uniform_real_distribution<float> hueDist(0.f, 360.f);
-    mParticles.push_back({position, velocity, hsvToRgb(hueDist(mRng), 1.f, 1.f)});
+    mParticles.push_back({position, velocity, hsvToRgb(hueDist(mRng), 1.f, 1.f), radius});
 }
 
-void ParticleSystem::pushFrom(sf::Vector2f center, float radius)
+void ParticleSystem::pushFrom(sf::Vector2f center, float heldRadius)
 {
-    const float radiusSq = radius * radius;
     for (auto& p : mParticles) {
-        sf::Vector2f d      = p.position - center;
-        float        distSq = d.x * d.x + d.y * d.y;
-        if (distSq > 0.f && distSq < radiusSq) {
+        float        minDist = heldRadius + p.radius;
+        sf::Vector2f d       = p.position - center;
+        float        distSq  = d.x * d.x + d.y * d.y;
+        if (distSq > 0.f && distSq < minDist * minDist) {
             float        dist = std::sqrt(distSq);
             sf::Vector2f n    = d / dist;
-            p.position       += n * (radius - dist);
+            p.position       += n * (minDist - dist);
             float along = p.velocity.x * n.x + p.velocity.y * n.y;
             if (along < 0.f)
                 p.velocity -= n * along * 2.f;
@@ -50,33 +50,43 @@ void ParticleSystem::pushFrom(sf::Vector2f center, float radius)
     }
 }
 
+void ParticleSystem::jolt()
+{
+    std::uniform_real_distribution<float> horizDist(-200.f, 200.f);
+    for (auto& p : mParticles) {
+        p.velocity.x += horizDist(mRng);
+        p.velocity.y -= 800.f;
+    }
+}
+
 void ParticleSystem::resolveCollisions()
 {
-    const float diameter = 2.f * HALF_SIZE;
-    const float diamSq   = diameter * diameter;
-
     for (std::size_t i = 0; i < mParticles.size(); ++i) {
         for (std::size_t j = i + 1; j < mParticles.size(); ++j) {
-            sf::Vector2f d      = mParticles[j].position - mParticles[i].position;
-            float        distSq = d.x * d.x + d.y * d.y;
-            if (distSq >= diamSq || distSq == 0.f)
+            float        minDist = mParticles[i].radius + mParticles[j].radius;
+            sf::Vector2f d       = mParticles[j].position - mParticles[i].position;
+            float        distSq  = d.x * d.x + d.y * d.y;
+            if (distSq >= minDist * minDist || distSq == 0.f)
                 continue;
 
             float        dist    = std::sqrt(distSq);
             sf::Vector2f n       = d / dist;
-            float        overlap = diameter - dist;
+            float        overlap = minDist - dist;
 
-            // Push apart equally
-            mParticles[i].position -= n * (overlap * 0.5f);
-            mParticles[j].position += n * (overlap * 0.5f);
+            float m1 = mParticles[i].radius * mParticles[i].radius;
+            float m2 = mParticles[j].radius * mParticles[j].radius;
+            float im1 = 1.f / m1, im2 = 1.f / m2;
+            float totalInvMass = im1 + im2;
 
-            // Impulse along collision normal (equal mass, coefficient of restitution)
+            mParticles[i].position -= n * (overlap * im1 / totalInvMass);
+            mParticles[j].position += n * (overlap * im2 / totalInvMass);
+
             float relVel = (mParticles[i].velocity.x - mParticles[j].velocity.x) * n.x
                          + (mParticles[i].velocity.y - mParticles[j].velocity.y) * n.y;
             if (relVel > 0.f) {
-                float impulse = relVel * (1.f + RESTITUTION) * 0.5f;
-                mParticles[i].velocity -= n * impulse;
-                mParticles[j].velocity += n * impulse;
+                float impulse = (1.f + RESTITUTION) * relVel / totalInvMass;
+                mParticles[i].velocity -= n * (impulse * im1);
+                mParticles[j].velocity += n * (impulse * im2);
             }
         }
     }
@@ -91,11 +101,13 @@ void ParticleSystem::update(float dt, sf::Vector2u bounds)
 
     resolveCollisions();
 
-    const float r      = HALF_SIZE;
-    const float right  = static_cast<float>(bounds.x) - r;
-    const float bottom = static_cast<float>(bounds.y) - r;
+    const float wx = static_cast<float>(bounds.x);
+    const float wy = static_cast<float>(bounds.y);
 
     for (auto& p : mParticles) {
+        const float r      = p.radius;
+        const float right  = wx - r;
+        const float bottom = wy - r;
         if (p.position.x < r)     { p.position.x = 2.f * r      - p.position.x; p.velocity.x =  std::abs(p.velocity.x) * DAMPING; }
         if (p.position.x > right) { p.position.x = 2.f * right  - p.position.x; p.velocity.x = -std::abs(p.velocity.x) * DAMPING; }
         if (p.position.y < r)     { p.position.y = 2.f * r      - p.position.y; p.velocity.y =  std::abs(p.velocity.y) * DAMPING; }
@@ -110,15 +122,15 @@ void ParticleSystem::draw(sf::RenderWindow& window) const
     for (std::size_t i = 0; i < mParticles.size(); ++i) {
         const sf::Vector2f& pos  = mParticles[i].position;
         const sf::Color&    col  = mParticles[i].color;
+        const float         r    = mParticles[i].radius;
         const std::size_t   base = i * SEGMENTS * 3;
 
         for (int s = 0; s < SEGMENTS; ++s) {
             float a0 = s       * 2.f * PI / SEGMENTS;
             float a1 = (s + 1) * 2.f * PI / SEGMENTS;
-
             verts[base + s*3 + 0].position = pos;
-            verts[base + s*3 + 1].position = {pos.x + std::cos(a0) * HALF_SIZE, pos.y + std::sin(a0) * HALF_SIZE};
-            verts[base + s*3 + 2].position = {pos.x + std::cos(a1) * HALF_SIZE, pos.y + std::sin(a1) * HALF_SIZE};
+            verts[base + s*3 + 1].position = {pos.x + std::cos(a0) * r, pos.y + std::sin(a0) * r};
+            verts[base + s*3 + 2].position = {pos.x + std::cos(a1) * r, pos.y + std::sin(a1) * r};
             verts[base + s*3 + 0].color = col;
             verts[base + s*3 + 1].color = col;
             verts[base + s*3 + 2].color = col;
