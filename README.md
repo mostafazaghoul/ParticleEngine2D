@@ -23,5 +23,6 @@ sudo apt-get install libx11-dev libxrandr-dev libxi-dev libudev-dev \
 
 ## Controls
 
-`Left mouse` — hold to spawn particles at cursor  
+`Left click` — spawn a ball that falls under gravity  
+`Left click and drag` — carry a ball with the cursor, push others aside, release to throw  
 `Escape` — close the window

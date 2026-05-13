@@ -3,13 +3,29 @@
 
 static constexpr float       GRAVITY       = 600.f;
 static constexpr float       DAMPING       = 0.72f;
-static constexpr float       HALF_SIZE     = 3.f;
 static constexpr std::size_t MAX_PARTICLES = 50'000;
 
 void ParticleSystem::spawn(sf::Vector2f position, sf::Vector2f velocity)
 {
     if (mParticles.size() < MAX_PARTICLES)
         mParticles.push_back({position, velocity});
+}
+
+void ParticleSystem::pushFrom(sf::Vector2f center, float radius)
+{
+    const float radiusSq = radius * radius;
+    for (auto& p : mParticles) {
+        sf::Vector2f d      = p.position - center;
+        float        distSq = d.x * d.x + d.y * d.y;
+        if (distSq > 0.f && distSq < radiusSq) {
+            float        dist = std::sqrt(distSq);
+            sf::Vector2f n    = d / dist;
+            p.position       += n * (radius - dist);
+            float along = p.velocity.x * n.x + p.velocity.y * n.y;
+            if (along < 0.f)
+                p.velocity -= n * along * 2.f;
+        }
+    }
 }
 
 void ParticleSystem::update(float dt, sf::Vector2u bounds)
