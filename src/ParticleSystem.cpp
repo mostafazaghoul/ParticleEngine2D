@@ -1,5 +1,6 @@
 #include "ParticleSystem.hpp"
 #include <cmath>
+#include <unordered_map>
 
 static constexpr float       GRAVITY       = 600.f;
 static constexpr float       DAMPING       = 0.72f;
@@ -61,32 +62,60 @@ void ParticleSystem::jolt()
 
 void ParticleSystem::resolveCollisions()
 {
+    // Grid cell = 2 * max radius so colliding particles are always in adjacent cells.
+    const float CELL = RADIUS_LARGE * 2.f;
+
+    auto cellKey = [](int cx, int cy) -> uint64_t {
+        return (static_cast<uint64_t>(static_cast<uint32_t>(cx)) << 32) |
+                static_cast<uint32_t>(cy);
+    };
+
+    std::unordered_map<uint64_t, std::vector<std::size_t>> grid;
+    grid.reserve(mParticles.size() * 2);
+
     for (std::size_t i = 0; i < mParticles.size(); ++i) {
-        for (std::size_t j = i + 1; j < mParticles.size(); ++j) {
-            float        minDist = mParticles[i].radius + mParticles[j].radius;
-            sf::Vector2f d       = mParticles[j].position - mParticles[i].position;
-            float        distSq  = d.x * d.x + d.y * d.y;
-            if (distSq >= minDist * minDist || distSq == 0.f)
-                continue;
+        int cx = static_cast<int>(std::floor(mParticles[i].position.x / CELL));
+        int cy = static_cast<int>(std::floor(mParticles[i].position.y / CELL));
+        grid[cellKey(cx, cy)].push_back(i);
+    }
 
-            float        dist    = std::sqrt(distSq);
-            sf::Vector2f n       = d / dist;
-            float        overlap = minDist - dist;
+    for (std::size_t i = 0; i < mParticles.size(); ++i) {
+        int cx = static_cast<int>(std::floor(mParticles[i].position.x / CELL));
+        int cy = static_cast<int>(std::floor(mParticles[i].position.y / CELL));
 
-            float m1 = mParticles[i].radius * mParticles[i].radius;
-            float m2 = mParticles[j].radius * mParticles[j].radius;
-            float im1 = 1.f / m1, im2 = 1.f / m2;
-            float totalInvMass = im1 + im2;
+        for (int dy = -1; dy <= 1; ++dy) {
+            for (int dx = -1; dx <= 1; ++dx) {
+                auto it = grid.find(cellKey(cx + dx, cy + dy));
+                if (it == grid.end()) continue;
+                for (std::size_t j : it->second) {
+                    if (j <= i) continue;
 
-            mParticles[i].position -= n * (overlap * im1 / totalInvMass);
-            mParticles[j].position += n * (overlap * im2 / totalInvMass);
+                    float        minDist = mParticles[i].radius + mParticles[j].radius;
+                    sf::Vector2f d       = mParticles[j].position - mParticles[i].position;
+                    float        distSq  = d.x * d.x + d.y * d.y;
+                    if (distSq >= minDist * minDist || distSq == 0.f)
+                        continue;
 
-            float relVel = (mParticles[i].velocity.x - mParticles[j].velocity.x) * n.x
-                         + (mParticles[i].velocity.y - mParticles[j].velocity.y) * n.y;
-            if (relVel > 0.f) {
-                float impulse = (1.f + RESTITUTION) * relVel / totalInvMass;
-                mParticles[i].velocity -= n * (impulse * im1);
-                mParticles[j].velocity += n * (impulse * im2);
+                    float        dist    = std::sqrt(distSq);
+                    sf::Vector2f n       = d / dist;
+                    float        overlap = minDist - dist;
+
+                    float m1 = mParticles[i].radius * mParticles[i].radius;
+                    float m2 = mParticles[j].radius * mParticles[j].radius;
+                    float im1 = 1.f / m1, im2 = 1.f / m2;
+                    float totalInvMass = im1 + im2;
+
+                    mParticles[i].position -= n * (overlap * im1 / totalInvMass);
+                    mParticles[j].position += n * (overlap * im2 / totalInvMass);
+
+                    float relVel = (mParticles[i].velocity.x - mParticles[j].velocity.x) * n.x
+                                 + (mParticles[i].velocity.y - mParticles[j].velocity.y) * n.y;
+                    if (relVel > 0.f) {
+                        float impulse = (1.f + RESTITUTION) * relVel / totalInvMass;
+                        mParticles[i].velocity -= n * (impulse * im1);
+                        mParticles[j].velocity += n * (impulse * im2);
+                    }
+                }
             }
         }
     }
